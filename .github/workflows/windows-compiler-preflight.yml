@@ -57,7 +57,7 @@ jobs:
           \ { throw 'Visual Studio Build Tools unavailable' }\n$devcmd = Join-Path $installation 'Common7\\Tools\\VsDevCmd.bat'\n\
           if (-not (Test-Path $devcmd)) { throw 'VS developer environment unavailable' }\ncmd /c \"`\"$devcmd`\" -arch=amd64\
           \ -host_arch=amd64 >nul && set\" | ForEach-Object {\n  if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1],\
-          \ $matches[2], 'Process') }\n}\nwhere.exe link\nif ($LASTEXITCODE -ne 0) { throw 'MSVC linker unavailable' }\nswift\
+          \ $matches[2], 'Process') }\n}\n$swiftSearchPath = $env:PATH\n[Environment]::SetEnvironmentVariable('PATH', $null, 'Process')\n[Environment]::SetEnvironmentVariable('Path', $swiftSearchPath, 'Process')\nwhere.exe link\nif ($LASTEXITCODE -ne 0) { throw 'MSVC linker unavailable' }\nswift\
           \ --version\nif ($LASTEXITCODE -ne 0) { throw 'Swift unavailable' }\nforeach ($shared in @('OFF', 'ON')) {\n  foreach\
           \ ($generator in @('Ninja', 'Ninja Multi-Config')) {\n    $label = $shared + '-' + $generator.Replace(' ', '-')\n\
           \    $prefix = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug\
