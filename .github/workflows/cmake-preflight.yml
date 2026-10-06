@@ -47,11 +47,12 @@ jobs:
         \ Multi-Config'; do\n    label=\"${shared}-${generator// /-}\"\n    prefix=\"$PWD/check-$label/prefix\"\n    cmake\
         \ -S . -B \"library-$label\" -G \"$generator\" -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=\"$shared\" -DCMAKE_PREFIX_PATH=\"\
         $prefix\" -DCMAKE_INSTALL_PREFIX=\"$prefix\"\n    cmake --build \"library-$label\" --config Debug\n    cmake --install\
-        \ \"library-$label\" --config Debug\n    cmake -S Tests/CMake -B \"consumer-build-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"\
-        $PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\" --config Debug\n    ctest --test-dir \"\
-        consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\" \"${prefix}-moved\"\n    cmake -S Tests/CMake\
-        \ -B \"consumer-install-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\"\
-        \ --config Debug\n    ctest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
+        \ \"library-$label\" --config Debug\n    cmake -DCMAKE_BUILD_TYPE=Debug -S Tests/CMake -B \"consumer-build-$label\"\
+        \ -G \"$generator\" -DCMAKE_PREFIX_PATH=\"$PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\"\
+        \ --config Debug\n    ctest --test-dir \"consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\"\
+        \ \"${prefix}-moved\"\n    cmake -DCMAKE_BUILD_TYPE=Debug -S Tests/CMake -B \"consumer-install-$label\" -G \"$generator\"\
+        \ -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\" --config Debug\n    ctest\
+        \ --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
   cmake-macos:
     runs-on: xcode-27
     steps:
@@ -88,11 +89,12 @@ jobs:
         \ Multi-Config'; do\n    label=\"${shared}-${generator// /-}\"\n    prefix=\"$PWD/check-$label/prefix\"\n    cmake\
         \ -S . -B \"library-$label\" -G \"$generator\" -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=\"$shared\" -DCMAKE_PREFIX_PATH=\"\
         $prefix\" -DCMAKE_INSTALL_PREFIX=\"$prefix\"\n    cmake --build \"library-$label\" --config Debug\n    cmake --install\
-        \ \"library-$label\" --config Debug\n    cmake -S Tests/CMake -B \"consumer-build-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"\
-        $PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\" --config Debug\n    ctest --test-dir \"\
-        consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\" \"${prefix}-moved\"\n    cmake -S Tests/CMake\
-        \ -B \"consumer-install-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\"\
-        \ --config Debug\n    ctest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
+        \ \"library-$label\" --config Debug\n    cmake -DCMAKE_BUILD_TYPE=Debug -S Tests/CMake -B \"consumer-build-$label\"\
+        \ -G \"$generator\" -DCMAKE_PREFIX_PATH=\"$PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\"\
+        \ --config Debug\n    ctest --test-dir \"consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\"\
+        \ \"${prefix}-moved\"\n    cmake -DCMAKE_BUILD_TYPE=Debug -S Tests/CMake -B \"consumer-install-$label\" -G \"$generator\"\
+        \ -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\" --config Debug\n    ctest\
+        \ --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
   cmake-windows:
     runs-on: windows-2022
     steps:
@@ -147,14 +149,16 @@ jobs:
           \ $matches[2], 'Process') }\n}\nwhere.exe link\nif ($LASTEXITCODE -ne 0) { throw 'MSVC linker unavailable' }\nswift\
           \ --version\nif ($LASTEXITCODE -ne 0) { throw 'Swift unavailable' }\nforeach ($shared in @('OFF', 'ON')) {\n  foreach\
           \ ($generator in @('Ninja', 'Ninja Multi-Config')) {\n    $label = $shared + '-' + $generator.Replace(' ', '-')\n\
-          \    $prefix = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -S . -B \"library-$label\" -G $generator -DCMAKE_BUILD_TYPE=Debug\
-          \ \"-DBUILD_SHARED_LIBS=$shared\" \"-DCMAKE_PREFIX_PATH=$prefix\" \"-DCMAKE_INSTALL_PREFIX=$prefix\"\n    Run-CMake\
-          \ --build \"library-$label\" --config Debug\n    Run-CMake --install \"library-$label\" --config Debug\n    Run-CMake\
-          \ -S Tests/CMake -B \"consumer-build-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=C:/work/library-$label;$prefix\"\
-          \n    Run-CMake --build \"consumer-build-$label\" --config Debug\n    Run-CTest --test-dir \"consumer-build-$label\"\
-          \ -C Debug --output-on-failure\n    Move-Item $prefix \"$prefix-moved\"\n    Run-CMake -S Tests/CMake -B \"consumer-install-$label\"\
-          \ -G $generator \"-DCMAKE_PREFIX_PATH=$prefix-moved\"\n    Run-CMake --build \"consumer-install-$label\" --config\
-          \ Debug\n    Run-CTest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  }\n}\n"
+          \    $prefix = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug\
+          \ -S . -B \"library-$label\" -G $generator -DCMAKE_BUILD_TYPE=Debug \"-DBUILD_SHARED_LIBS=$shared\" \"-DCMAKE_PREFIX_PATH=$prefix\"\
+          \ \"-DCMAKE_INSTALL_PREFIX=$prefix\"\n    Run-CMake --build \"library-$label\" --config Debug\n    Run-CMake --install\
+          \ \"library-$label\" --config Debug\n    Run-CMake -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -S Tests/CMake\
+          \ -B \"consumer-build-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=C:/work/library-$label;$prefix\"\n    Run-CMake\
+          \ --build \"consumer-build-$label\" --config Debug\n    Run-CTest --test-dir \"consumer-build-$label\" -C Debug\
+          \ --output-on-failure\n    Move-Item $prefix \"$prefix-moved\"\n    Run-CMake -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug\
+          \ -S Tests/CMake -B \"consumer-install-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=$prefix-moved\"\n    Run-CMake\
+          \ --build \"consumer-install-$label\" --config Debug\n    Run-CTest --test-dir \"consumer-install-$label\" -C Debug\
+          \ --output-on-failure\n  }\n}\n"
       run: "$ErrorActionPreference = 'Stop'\nSet-Content -Path cmake-smoke.ps1 -Value $env:SMOKE\n docker run --rm -v \"${env:GITHUB_WORKSPACE}:C:\\\
         work\" -w C:\\work swift:6.4-windowsservercore-ltsc2022 powershell -NoProfile -ExecutionPolicy Bypass -File C:\\work\\\
         cmake-smoke.ps1\nif ($LASTEXITCODE -ne 0) { throw 'Windows CMake validation failed' }"
