@@ -1,58 +1,7 @@
-name: Contribution preflight
+name: CMake contribution preflight
 permissions:
   contents: read
 jobs:
-  soundness:
-    name: Soundness
-    uses: rksharma-owg/swift-service-context/.github/workflows/fork-soundness.yml@main
-    with:
-      license_header_check_project_name: Swift Service Context
-      api_breakage_check_baseline: ${{ inputs.base_sha }}
-  unit-tests:
-    name: Unit tests
-    uses: rksharma-owg/swift-service-context/.github/workflows/unit_tests.yml@main
-    with:
-      linux_6_2_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      linux_6_3_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      linux_6_4_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      linux_nightly_next_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
-      linux_nightly_main_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
-      windows_6_2_enabled: true
-      windows_6_3_enabled: true
-      windows_6_4_enabled: true
-      windows_nightly_next_enabled: true
-      windows_nightly_main_enabled: true
-      windows_6_2_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      windows_6_3_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      windows_6_4_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
-        -require-explicit-sendable
-      windows_nightly_next_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
-      windows_nightly_main_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
-  benchmarks:
-    name: Benchmarks
-    uses: rksharma-owg/swift-service-context/.github/workflows/benchmarks.yml@main
-    with:
-      benchmark_package_path: Benchmarks
-  cxx-interop:
-    name: Cxx interop
-    uses: rksharma-owg/swift-service-context/.github/workflows/cxx_interop.yml@main
-  static-sdk:
-    name: Static SDK
-    uses: rksharma-owg/swift-service-context/.github/workflows/static_sdk.yml@main
-  macos-tests:
-    name: macOS tests
-    uses: rksharma-owg/swift-service-context/.github/workflows/macos_tests.yml@main
-    with:
-      runner_pool: general
-      build_scheme: swift-service-context-Package
-  release-builds:
-    name: Release builds
-    uses: rksharma-owg/swift-service-context/.github/workflows/release_builds.yml@main
   cmake-linux:
     runs-on: ubuntu-24.04
     strategy:
