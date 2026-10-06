@@ -122,10 +122,11 @@ jobs:
         EXPECTED: ${{ matrix.config.xcode_version }}
       run: "set -euo pipefail\nselected=\"\"\nexpected=\"${EXPECTED#swift }\"\nfor app in /Applications/Xcode*.app; do\n \
         \ [ -d \"$app/Contents/Developer\" ] || continue\n  version=$(DEVELOPER_DIR=\"$app/Contents/Developer\" xcrun swift\
-        \ --version)\n  if [[ \"$EXPECTED\" == 'latest beta' ]]; then\n    if [[ \"$app\" == *beta* || \"$app\" == *Beta*\
-        \ ]]; then selected=\"$app\"; fi\n  elif [[ \"$version\" == *\"Swift version $expected.\"* ]]; then selected=\"$app\"\
-        ; fi\ndone\n[ -n \"$selected\" ] || { echo \"Required toolchain unavailable: $EXPECTED\"; exit 1; }\necho \"DEVELOPER_DIR=$selected/Contents/Developer\"\
-        \ >> \"$GITHUB_ENV\"\nDEVELOPER_DIR=\"$selected/Contents/Developer\" xcrun swift --version"
+        \ --version)\n  printf '%s: %s\\n' \"$app\" \"$version\"\n  if [[ \"$EXPECTED\" == 'latest beta' ]]; then\n    if\
+        \ [[ \"$app\" == *beta* || \"$app\" == *Beta* ]]; then selected=\"$app\"; fi\n  elif [[ \"$version\" =~ Swift\\ version\\\
+        \ $expected([.\\ ]|$) ]]; then selected=\"$app\"; fi\ndone\n[ -n \"$selected\" ] || { echo \"Required toolchain unavailable:\
+        \ $EXPECTED\"; exit 1; }\necho \"DEVELOPER_DIR=$selected/Contents/Developer\" >> \"$GITHUB_ENV\"\nDEVELOPER_DIR=\"\
+        $selected/Contents/Developer\" xcrun swift --version"
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       with:

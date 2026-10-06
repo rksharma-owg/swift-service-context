@@ -1,0 +1,19 @@
+name: macOS contribution preflight
+permissions:
+  contents: read
+jobs:
+  macos-tests:
+    name: macOS tests
+    uses: rksharma-owg/swift-service-context/.github/workflows/macos_tests.yml@main
+    with:
+      runner_pool: general
+      build_scheme: swift-service-context-Package
+'on':
+  workflow_dispatch:
+    inputs:
+      patch_sha:
+        type: string
+        required: true
+      base_sha:
+        type: string
+        required: true
