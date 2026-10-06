@@ -118,7 +118,8 @@ jobs:
   darwin-job:
     name: ${{ matrix.config.name }}
     needs: construct-matrix
-    runs-on: ${{ matrix.config.xcode_version == 'swift 6.4' && 'xcode-27' || 'macos-26' }}
+    runs-on: ${{ (matrix.config.xcode_version == 'swift 6.4' || matrix.config.xcode_version == 'latest beta') && 'xcode-27'
+      || 'macos-26' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
