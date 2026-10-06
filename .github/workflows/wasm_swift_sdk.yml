@@ -1,0 +1,96 @@
+name: WebAssembly Swift SDK
+permissions:
+  contents: read
+jobs:
+  construct-matrix:
+    name: Construct WebAssembly Swift SDK matrix
+    runs-on: ubuntu-latest
+    outputs:
+      wasm-swift-sdk-matrix: ${{ steps.generate-matrix.outputs.wasm-swift-sdk-matrix }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        persist-credentials: false
+        ref: ${{ github.event.inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ github.event.inputs.patch_sha }}
+        BASE_SHA: ${{ github.event.inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - id: generate-matrix
+      run: "# Validate JSON inputs\nif ! echo \"$INPUT_ENV_VARS\" | jq empty 2>/dev/null; then\n  echo \"Error: env_vars is\
+        \ not valid JSON\"\n  exit 1\nfi\n\nenv_vars_json=\"$INPUT_ENV_VARS\"\nentries=\"\"\n\nmake_entry() {\n  local swift_version=\"\
+        $1\"\n  local install_env=\"$2\"\n  jq -n \\\n    --arg name \"${swift_version} Jammy\" \\\n    --arg swift_version\
+        \ \"$swift_version\" \\\n    --arg install_env \"$install_env\" \\\n    --arg command_arguments \"$INPUT_ADDITIONAL_COMMAND_ARGUMENTS\"\
+        \ \\\n    --argjson env \"$env_vars_json\" \\\n    '{\n      \"name\": $name,\n      \"swift_version\": $swift_version,\n\
+        \      \"platform\": \"Linux\",\n      \"runner\": \"ubuntu-latest\",\n      \"image\": \"ubuntu:jammy\",\n      \"\
+        setup_command\": (\"apt update -q && apt install -y -q curl jq tar && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_prerequisites.sh\
+        \ | bash && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_sdk.sh\
+        \ | \" + $install_env + \" INSTALL_SWIFT_ARCH=x86_64 INSTALL_SWIFT_SDK=wasm-sdk bash && hash -r\"),\n      \"command\"\
+        : \"curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/swift-build-with-wasm-sdk.sh\
+        \ | bash -s --\",\n      \"command_arguments\": $command_arguments,\n      \"env\": $env\n    }'\n}\n\nif [[ \"$INPUT_NIGHTLY_MAIN_ENABLED\"\
+        \ == \"true\" ]]; then\n  entry=$(make_entry \"nightly-main\" \"INSTALL_SWIFT_BRANCH=main\")\n  entries=\"${entries:+${entries},}${entry}\"\
+        \nfi\n\nif [[ \"$INPUT_NIGHTLY_NEXT_ENABLED\" == \"true\" ]]; then\n  entry=$(make_entry \"$NIGHTLY_NEXT_VERSION\"\
+        \ \"INSTALL_SWIFT_BRANCH=$NIGHTLY_NEXT_BRANCH\")\n  entries=\"${entries:+${entries},}${entry}\"\nfi\n\nif [[ \"$INPUT_RELEASE_6_3_ENABLED\"\
+        \ == \"true\" ]]; then\n  entry=$(make_entry \"6.3\" \"INSTALL_SWIFT_VERSION=6.3\")\n  entries=\"${entries:+${entries},}${entry}\"\
+        \nfi\n\nif [[ \"$INPUT_RELEASE_6_4_ENABLED\" == \"true\" ]]; then\n  entry=$(make_entry \"6.4\" \"INSTALL_SWIFT_VERSION=6.4\"\
+        )\n  entries=\"${entries:+${entries},}${entry}\"\nfi\n\nif [[ -z \"$entries\" ]]; then\n  echo \"Error: No WASM Swift\
+        \ SDK matrix jobs enabled\"\n  exit 1\nfi\n\necho \"wasm-swift-sdk-matrix=$(echo \"{\\\"config\\\":[${entries}]}\"\
+        \ | jq -c)\" >> \"$GITHUB_OUTPUT\"\n"
+      env:
+        INPUT_NIGHTLY_MAIN_ENABLED: ${{ inputs.nightly_main_enabled }}
+        INPUT_NIGHTLY_NEXT_ENABLED: ${{ inputs.nightly_next_enabled }}
+        INPUT_RELEASE_6_3_ENABLED: ${{ inputs.release_6_3_enabled }}
+        INPUT_RELEASE_6_4_ENABLED: ${{ inputs.release_6_4_enabled }}
+        INPUT_ENV_VARS: ${{ inputs.env_vars }}
+        INPUT_ADDITIONAL_COMMAND_ARGUMENTS: ${{ inputs.additional_command_arguments }}
+        NIGHTLY_NEXT_VERSION: nightly-6.4
+        NIGHTLY_NEXT_BRANCH: swift-6.4-branch
+  wasm-swift-sdk:
+    name: WebAssembly Swift SDK
+    needs: construct-matrix
+    uses: rksharma-owg/swift-service-context/.github/workflows/swift_test_matrix.yml@main
+    with:
+      name: WebAssembly Swift SDK
+      matrix_string: ${{ needs.construct-matrix.outputs.wasm-swift-sdk-matrix }}
+'on':
+  workflow_call:
+    inputs:
+      nightly_main_enabled:
+        type: boolean
+        description: Boolean to enable the nightly-main WASM Swift SDK matrix job. Defaults to true.
+        default: true
+      nightly_next_enabled:
+        type: boolean
+        description: Boolean to enable the nightly-next WASM Swift SDK matrix job. Defaults to true.
+        default: false
+      release_6_3_enabled:
+        type: boolean
+        description: Boolean to enable the 6.3 release WASM Swift SDK matrix job. Defaults to true.
+        default: true
+      release_6_4_enabled:
+        type: boolean
+        description: Boolean to enable the 6.4 release WASM Swift SDK matrix job. Defaults to true.
+        default: true
+      env_vars:
+        type: string
+        description: Environment variables for jobs as JSON (e.g., '{"DEBUG":"1","LOG_LEVEL":"info"}').
+        default: '{}'
+      additional_command_arguments:
+        type: string
+        description: Additional arguments passed to swift build (the Wasm Swift SDK will be specified). Defaults to empty.
+        default: ''
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}-wasm_swift_sdk.yml-${{ inputs.name }}
+  cancel-in-progress: false

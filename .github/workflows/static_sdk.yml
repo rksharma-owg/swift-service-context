@@ -1,0 +1,71 @@
+name: Static SDK
+permissions:
+  contents: read
+jobs:
+  construct-matrix:
+    name: Construct Static SDK matrix
+    runs-on: ubuntu-latest
+    outputs:
+      static-sdk-matrix: ${{ steps.generate-matrix.outputs.static-sdk-matrix }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        persist-credentials: false
+        ref: ${{ github.event.inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ github.event.inputs.patch_sha }}
+        BASE_SHA: ${{ github.event.inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - id: generate-matrix
+      run: "# Validate and use JSON environment variables directly\nenv_vars_json=\"$INPUT_ENV_VARS\"\n\n# Validate JSON format\n\
+        if ! echo \"$env_vars_json\" | jq empty 2>/dev/null; then\n  echo \"Error: env_vars is not valid JSON\"\n  exit 1\n\
+        fi\n\n# Generate matrix with parsed environment variables\ncat >> \"$GITHUB_OUTPUT\" << EOM\nstatic-sdk-matrix=$(echo\
+        \ '{\n  \"config\":[\n    {\n      \"name\":\"latest-release Jammy\",\n      \"swift_version\":\"latest-release\"\
+        ,\n      \"platform\":\"Linux\",\n      \"runner\":\"ubuntu-latest\",\n      \"image\":\"ubuntu:jammy\",\n      \"\
+        setup_command\":\"apt update -q && apt install -y -q curl jq tar && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_prerequisites.sh\
+        \ | bash && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_sdk.sh\
+        \ | INSTALL_SWIFT_VERSION=latest INSTALL_SWIFT_ARCH=x86_64 bash && hash -r\",\n      \"command\":\"swift build\",\n\
+        \      \"command_arguments\":\"--swift-sdks-path /tmp/swiftsdks '\"$INPUT_COMMAND_ARGUMENTS\"'\",\n      \"env\":'\"\
+        $env_vars_json\"'\n    },\n    {\n      \"name\":\"main Jammy\",\n      \"swift_version\":\"main\",\n      \"platform\"\
+        :\"Linux\",\n      \"runner\":\"ubuntu-latest\",\n      \"image\":\"ubuntu:jammy\",\n      \"setup_command\":\"apt\
+        \ update -q && apt install -y -q curl jq tar && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_prerequisites.sh\
+        \ | bash && curl -s --retry 3 https://raw.githubusercontent.com/apple/swift-nio/main/scripts/install_swift_sdk.sh\
+        \ | INSTALL_SWIFT_BRANCH=main INSTALL_SWIFT_ARCH=x86_64 bash && hash -r\",\n      \"command\":\"swift build\",\n \
+        \     \"command_arguments\":\"--swift-sdks-path /tmp/swiftsdks '\"$INPUT_COMMAND_ARGUMENTS\"'\",\n      \"env\":'\"\
+        $env_vars_json\"'\n    }\n  ]\n}' | jq -c)\nEOM\n"
+      env:
+        INPUT_ENV_VARS: ${{ inputs.env_vars }}
+        INPUT_COMMAND_ARGUMENTS: ${{ inputs.command_arguments }}
+  static-sdk:
+    name: Static SDK
+    needs: construct-matrix
+    uses: rksharma-owg/swift-service-context/.github/workflows/swift_test_matrix.yml@main
+    with:
+      name: Static SDK
+      matrix_string: ${{ needs.construct-matrix.outputs.static-sdk-matrix }}
+'on':
+  workflow_call:
+    inputs:
+      env_vars:
+        type: string
+        description: Environment variables for jobs as JSON (e.g., '{"DEBUG":"1","LOG_LEVEL":"info"}').
+        default: '{}'
+      command_arguments:
+        type: string
+        description: The arguments passed to swift build. Defaults to '--swift-sdk x86_64-swift-linux-musl'.
+        default: --swift-sdk x86_64-swift-linux-musl
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}-static_sdk.yml-${{ inputs.name }}
+  cancel-in-progress: false

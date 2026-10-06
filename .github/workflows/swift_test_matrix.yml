@@ -1,0 +1,112 @@
+name: Matrix
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}-swift_test_matrix.yml-${{ inputs.name }}
+  cancel-in-progress: false
+jobs:
+  execute-matrix:
+    name: ${{ matrix.config.platform }} (${{ matrix.config.name }})
+    runs-on: ${{ matrix.config.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(inputs.matrix_string) }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        persist-credentials: false
+        submodules: true
+        ref: ${{ github.event.inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ github.event.inputs.patch_sha }}
+        BASE_SHA: ${{ github.event.inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Wait for Docker daemon (Windows)
+      if: ${{ matrix.config.platform == 'Windows' }}
+      run: "$maxAttempts = 30\n$attempt = 0\ndo {\n  $attempt++\n  if ((Get-Service docker).Status -ne \"Running\") {\n  \
+        \  Start-Service docker\n  }\n  docker info 2>&1 | Out-Null\n  if ($LASTEXITCODE -eq 0) { break }\n  if ($attempt\
+        \ -ge $maxAttempts) {\n    Write-Error \"Docker daemon did not become ready after $maxAttempts attempts\"\n    exit\
+        \ 1\n  }\n  Start-Sleep -Seconds 6\n} while ($true)\n"
+      shell: pwsh
+    - name: Pull Docker image
+      if: ${{ matrix.config.dockerfile == '' }}
+      run: docker pull ${{ matrix.config.image }}
+    - name: Build Docker image from Dockerfile
+      id: docker-build
+      if: ${{ matrix.config.platform != 'Windows' && matrix.config.dockerfile != '' }}
+      run: "local_tag=\"local-ci-image:$(echo \"$MATRIX_SWIFT_VERSION\" | tr ':/' '-')\"\ndocker buildx build \\\n  --build-arg\
+        \ SWIFT_IMAGE=\"$MATRIX_IMAGE\" \\\n  -f \"$MATRIX_DOCKERFILE\" \\\n  -t \"$local_tag\" \\\n  .\necho \"image=$local_tag\"\
+        \ >> \"$GITHUB_OUTPUT\"\n"
+      env:
+        MATRIX_SWIFT_VERSION: ${{ matrix.config.swift_version }}
+        MATRIX_IMAGE: ${{ matrix.config.image }}
+        MATRIX_DOCKERFILE: ${{ matrix.config.dockerfile }}
+    - name: Run matrix job
+      if: ${{ matrix.config.platform != 'Windows' }}
+      run: "if [[ -n \"$MATRIX_SETUP_COMMAND\" ]]; then\n  setup_command_expression=\"$MATRIX_SETUP_COMMAND &&\"\nelse\n \
+        \ setup_command_expression=\"\"\nfi\nworkspace=\"/$(basename \"$GITHUB_WORKSPACE\")\"\n\ndocker_args=(\n  \"run\"\n\
+        \  \"-v\" \"$GITHUB_WORKSPACE:$workspace\"\n  \"-w\" \"$workspace\"\n  \"-e\" \"CI=$CI\"\n  \"-e\" \"GITHUB_ACTIONS=$GITHUB_ACTIONS\"\
+        \n  \"-e\" \"SWIFT_VERSION=$MATRIX_SWIFT_VERSION\"\n  \"-e\" \"workspace=$workspace\"\n)\n\n# Add Docker capabilities\
+        \ if specified\nif [[ \"$MATRIX_DOCKER_CAPABILITIES\" != '[]' ]]; then\n  while IFS= read -r cap; do\n    docker_args+=(\"\
+        --cap-add=$cap\")\n  done < <(echo \"$MATRIX_DOCKER_CAPABILITIES\" | jq -r '.[]')\nfi\n\n# Add Docker security options\
+        \ if specified\nif [[ \"$MATRIX_DOCKER_SECURITY_OPTS\" != '[]' ]]; then\n  while IFS= read -r opt; do\n    docker_args+=(\"\
+        --security-opt\" \"$opt\")\n  done < <(echo \"$MATRIX_DOCKER_SECURITY_OPTS\" | jq -r '.[]')\nfi\n\nif [[ \"$MATRIX_ENV_JSON\"\
+        \ != '{}' ]]; then\n  while IFS=\"=\" read -r key value; do\n    if [[ -n \"$key\" && -n \"$value\" ]]; then\n   \
+        \   docker_args+=(\"-e\" \"$key=$value\")\n    fi\n  done < <(echo \"$MATRIX_ENV_JSON\" | jq -r 'to_entries[] | \"\
+        \\(.key)=\\(.value)\"')\nfi\n\ndocker_args+=(\"$MATRIX_IMAGE\")\ndocker_args+=(\"bash\" \"-c\" \"$setup_command_expression\
+        \ $MATRIX_COMMAND $MATRIX_COMMAND_ARGUMENTS\")\n\necho \"Executing Docker command: docker ${docker_args[*]}\"\ndocker\
+        \ \"${docker_args[@]}\"\n"
+      env:
+        MATRIX_SETUP_COMMAND: ${{ matrix.config.setup_command }}
+        MATRIX_SWIFT_VERSION: ${{ matrix.config.swift_version }}
+        MATRIX_IMAGE: ${{ steps.docker-build.outputs.image || matrix.config.image }}
+        MATRIX_COMMAND: ${{ matrix.config.command }}
+        MATRIX_COMMAND_ARGUMENTS: ${{ matrix.config.command_arguments }}
+        MATRIX_ENV_JSON: ${{ toJson(matrix.config.env) }}
+        MATRIX_DOCKER_CAPABILITIES: ${{ toJson(matrix.config.docker_capabilities) }}
+        MATRIX_DOCKER_SECURITY_OPTS: ${{ toJson(matrix.config.docker_security_opts) }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+    - name: Run matrix job (Windows)
+      if: ${{ matrix.config.platform == 'Windows' }}
+      run: "if (-not [string]::IsNullOrEmpty(\"$env:MATRIX_SETUP_COMMAND\")) {\n    $setup_command_expression = \"$env:MATRIX_SETUP_COMMAND\
+        \ &\"\n} else {\n    $setup_command_expression = \"\"\n}\n$workspace = \"C:\\\" + (Split-Path $env:GITHUB_WORKSPACE\
+        \ -Leaf)\n\n$docker_args = @(\n    \"run\", \"-v\", \"$env:GITHUB_WORKSPACE`:$($workspace)\",\n    \"-w\", $workspace,\n\
+        \    \"-e\", \"CI=$env:CI\",\n    \"-e\", \"GITHUB_ACTIONS=$env:GITHUB_ACTIONS\",\n    \"-e\", \"SWIFT_VERSION=$env:MATRIX_SWIFT_VERSION\"\
+        \n)\n\n$env_args = @()\n$env_json = $env:MATRIX_ENV_JSON\nif ($env_json -ne '{}') {\n    $env_obj = $env_json | ConvertFrom-Json\n\
+        \    $env_obj.PSObject.Properties | ForEach-Object {\n        $env_args += \"-e\"\n        $env_args += \"$($_.Name)=$($_.Value)\"\
+        \n    }\n}\n$docker_args += $env_args\n\n$docker_args += @(\"$env:MATRIX_IMAGE\", \"cmd\", \"/s\", \"/c\", \"swift\
+        \ --version & $($setup_command_expression) $env:MATRIX_COMMAND $env:MATRIX_COMMAND_ARGUMENTS\")\n\nWrite-Host \"Executing\
+        \ Docker command: docker $($docker_args -join ' ')\"\n& docker @docker_args\n"
+      env:
+        MATRIX_SETUP_COMMAND: ${{ matrix.config.setup_command }}
+        MATRIX_SWIFT_VERSION: ${{ matrix.config.swift_version }}
+        MATRIX_IMAGE: ${{ matrix.config.image }}
+        MATRIX_COMMAND: ${{ matrix.config.command }}
+        MATRIX_COMMAND_ARGUMENTS: ${{ matrix.config.command_arguments }}
+        MATRIX_ENV_JSON: ${{ toJson(matrix.config.env) }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+    env:
+      SWIFT_VERSION: ${{ matrix.config.swift_version }}
+'on':
+  workflow_call:
+    inputs:
+      name:
+        type: string
+        description: The name of the workflow used for the concurrency group.
+        required: true
+      matrix_string:
+        type: string
+        description: The test matrix definition.
+        required: true

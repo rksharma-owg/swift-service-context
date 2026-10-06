@@ -1,0 +1,59 @@
+name: Matrix Load
+permissions:
+  contents: read
+jobs:
+  load-matrix:
+    name: Prepare matrices
+    runs-on: ubuntu-latest
+    outputs:
+      swift-matrix: ${{ steps.load-matrix.outputs.swift-matrix }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        persist-credentials: false
+        ref: ${{ github.event.inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ github.event.inputs.patch_sha }}
+        BASE_SHA: ${{ github.event.inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Mark the workspace as safe
+      run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
+    - id: load-matrix
+      run: 'printf "swift-matrix=%s" "$(jq -ec ''.'' "$INPUT_MATRIX_PATH")" >> "$GITHUB_OUTPUT"
+
+        '
+      env:
+        INPUT_MATRIX_PATH: ${{ inputs.matrix_path }}
+  execute-matrix:
+    name: Execute matrix
+    needs: load-matrix
+    uses: rksharma-owg/swift-service-context/.github/workflows/swift_test_matrix.yml@main
+    with:
+      name: ${{ inputs.name }}
+      matrix_string: ${{ needs.load-matrix.outputs.swift-matrix }}
+'on':
+  workflow_call:
+    inputs:
+      name:
+        type: string
+        description: The name of the workflow used for the concurrency group.
+        required: true
+      matrix_path:
+        type: string
+        description: The path of the test matrix definition.
+        default: ''
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}-swift_load_test_matrix.yml-${{ inputs.name }}
+  cancel-in-progress: false

@@ -1,0 +1,201 @@
+name: Contribution preflight
+permissions:
+  contents: read
+jobs:
+  soundness:
+    name: Soundness
+    uses: rksharma-owg/swift-service-context/.github/workflows/fork-soundness.yml@main
+    with:
+      license_header_check_project_name: Swift Service Context
+      api_breakage_check_baseline: ${{ inputs.base_sha }}
+  unit-tests:
+    name: Unit tests
+    uses: rksharma-owg/swift-service-context/.github/workflows/unit_tests.yml@main
+    with:
+      linux_6_2_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      linux_6_3_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      linux_6_4_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      linux_nightly_next_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
+      linux_nightly_main_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
+      windows_6_2_enabled: true
+      windows_6_3_enabled: true
+      windows_6_4_enabled: true
+      windows_nightly_next_enabled: true
+      windows_nightly_main_enabled: true
+      windows_6_2_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      windows_6_3_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      windows_6_4_arguments_override: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error -Xswiftc
+        -require-explicit-sendable
+      windows_nightly_next_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
+      windows_nightly_main_arguments_override: --explicit-target-dependency-import-check error -Xswiftc -require-explicit-sendable
+  benchmarks:
+    name: Benchmarks
+    uses: rksharma-owg/swift-service-context/.github/workflows/benchmarks.yml@main
+    with:
+      benchmark_package_path: Benchmarks
+  cxx-interop:
+    name: Cxx interop
+    uses: rksharma-owg/swift-service-context/.github/workflows/cxx_interop.yml@main
+  static-sdk:
+    name: Static SDK
+    uses: rksharma-owg/swift-service-context/.github/workflows/static_sdk.yml@main
+  macos-tests:
+    name: macOS tests
+    uses: rksharma-owg/swift-service-context/.github/workflows/macos_tests.yml@main
+    with:
+      runner_pool: general
+      build_scheme: swift-service-context-Package
+  release-builds:
+    name: Release builds
+    uses: rksharma-owg/swift-service-context/.github/workflows/release_builds.yml@main
+  cmake-linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        swift:
+        - '6.2'
+        - '6.3'
+        - '6.4'
+    container:
+      image: swift:${{ matrix.swift }}-noble
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Install CMake and Ninja
+      run: 'apt-get update -qq && apt-get install -y python3-venv ninja-build
+
+        python3 -m venv /tmp/cmake-env
+
+        /tmp/cmake-env/bin/pip install cmake==4.4.3
+
+        echo /tmp/cmake-env/bin >> "$GITHUB_PATH"'
+    - name: Build-tree and relocated static/shared consumers
+      shell: bash
+      run: "set -euo pipefail\nswift --version\ncmake --version\nfor shared in OFF ON; do\n  for generator in Ninja 'Ninja\
+        \ Multi-Config'; do\n    label=\"${shared}-${generator// /-}\"\n    prefix=\"$PWD/check-$label/prefix\"\n    cmake\
+        \ -S . -B \"library-$label\" -G \"$generator\" -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=\"$shared\" -DCMAKE_PREFIX_PATH=\"\
+        $prefix\" -DCMAKE_INSTALL_PREFIX=\"$prefix\"\n    cmake --build \"library-$label\" --config Debug\n    cmake --install\
+        \ \"library-$label\" --config Debug\n    cmake -S Tests/CMake -B \"consumer-build-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"\
+        $PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\" --config Debug\n    ctest --test-dir \"\
+        consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\" \"${prefix}-moved\"\n    cmake -S Tests/CMake\
+        \ -B \"consumer-install-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\"\
+        \ --config Debug\n    ctest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
+  cmake-macos:
+    runs-on: xcode-27
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Select Swift 6.4 Xcode
+      shell: bash
+      run: "set -euo pipefail\nselected=\"\"\nfor app in /Applications/Xcode*.app; do\n  [ -d \"$app/Contents/Developer\"\
+        \ ] || continue\n  if DEVELOPER_DIR=\"$app/Contents/Developer\" xcrun swift --version | grep -q 'Swift version 6.4';\
+        \ then selected=\"$app\"; fi\ndone\n[ -n \"$selected\" ]\necho \"DEVELOPER_DIR=$selected/Contents/Developer\" >> \"\
+        $GITHUB_ENV\""
+    - name: Install CMake and Ninja
+      run: brew install cmake ninja
+    - name: Build-tree and relocated static/shared consumers
+      shell: bash
+      run: "set -euo pipefail\nswift --version\ncmake --version\nfor shared in OFF ON; do\n  for generator in Ninja 'Ninja\
+        \ Multi-Config'; do\n    label=\"${shared}-${generator// /-}\"\n    prefix=\"$PWD/check-$label/prefix\"\n    cmake\
+        \ -S . -B \"library-$label\" -G \"$generator\" -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=\"$shared\" -DCMAKE_PREFIX_PATH=\"\
+        $prefix\" -DCMAKE_INSTALL_PREFIX=\"$prefix\"\n    cmake --build \"library-$label\" --config Debug\n    cmake --install\
+        \ \"library-$label\" --config Debug\n    cmake -S Tests/CMake -B \"consumer-build-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"\
+        $PWD/library-$label;$prefix\"\n    cmake --build \"consumer-build-$label\" --config Debug\n    ctest --test-dir \"\
+        consumer-build-$label\" -C Debug --output-on-failure\n    mv \"$prefix\" \"${prefix}-moved\"\n    cmake -S Tests/CMake\
+        \ -B \"consumer-install-$label\" -G \"$generator\" -DCMAKE_PREFIX_PATH=\"${prefix}-moved\"\n    cmake --build \"consumer-install-$label\"\
+        \ --config Debug\n    ctest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  done\ndone\n"
+  cmake-windows:
+    runs-on: windows-2022
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        ref: ${{ inputs.patch_sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ inputs.patch_sha }}
+        BASE_SHA: ${{ inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Install verified CMake binary
+      shell: pwsh
+      run: '$ErrorActionPreference = ''Stop''
+
+        Invoke-WebRequest https://github.com/Kitware/CMake/releases/download/v4.0.3/cmake-4.0.3-windows-x86_64.zip -OutFile
+        cmake.zip
+
+        if ((Get-FileHash cmake.zip -Algorithm SHA256).Hash.ToLower() -ne ''b59a31dfbfa376a4aaea9ff560ff2b29f78ee5f9fb15447fc71ae7bf9fea9379'')
+        { throw ''CMake digest mismatch'' }
+
+        Expand-Archive cmake.zip cmake-dist'
+    - name: Build-tree and relocated static/shared Windows consumers
+      shell: pwsh
+      env:
+        SMOKE: "$ErrorActionPreference = 'Stop'\n$env:PATH = 'C:\\work\\cmake-dist\\cmake-4.0.3-windows-x86_64\\bin;' + $env:PATH\n\
+          function Run-CMake { & cmake @args; if ($LASTEXITCODE -ne 0) { throw \"cmake failed: $args\" } }\nfunction Run-CTest\
+          \ { & ctest @args; if ($LASTEXITCODE -ne 0) { throw \"ctest failed: $args\" } }\nSet-Location C:\\work\nswift --version\n\
+          if ($LASTEXITCODE -ne 0) { throw 'Swift unavailable' }\nforeach ($shared in @('OFF', 'ON')) {\n  foreach ($generator\
+          \ in @('Ninja', 'Ninja Multi-Config')) {\n    $label = $shared + '-' + $generator.Replace(' ', '-')\n    $prefix\
+          \ = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -S . -B \"library-$label\" -G $generator -DCMAKE_BUILD_TYPE=Debug\
+          \ \"-DBUILD_SHARED_LIBS=$shared\" \"-DCMAKE_PREFIX_PATH=$prefix\" \"-DCMAKE_INSTALL_PREFIX=$prefix\"\n    Run-CMake\
+          \ --build \"library-$label\" --config Debug\n    Run-CMake --install \"library-$label\" --config Debug\n    Run-CMake\
+          \ -S Tests/CMake -B \"consumer-build-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=C:/work/library-$label;$prefix\"\
+          \n    Run-CMake --build \"consumer-build-$label\" --config Debug\n    Run-CTest --test-dir \"consumer-build-$label\"\
+          \ -C Debug --output-on-failure\n    Move-Item $prefix \"$prefix-moved\"\n    Run-CMake -S Tests/CMake -B \"consumer-install-$label\"\
+          \ -G $generator \"-DCMAKE_PREFIX_PATH=$prefix-moved\"\n    Run-CMake --build \"consumer-install-$label\" --config\
+          \ Debug\n    Run-CTest --test-dir \"consumer-install-$label\" -C Debug --output-on-failure\n  }\n}\n"
+      run: "$ErrorActionPreference = 'Stop'\nSet-Content -Path cmake-smoke.ps1 -Value $env:SMOKE\n docker run --rm -v \"${env:GITHUB_WORKSPACE}:C:\\\
+        work\" -w C:\\work swift:6.4-windowsservercore-ltsc2022 powershell -NoProfile -ExecutionPolicy Bypass -File C:\\work\\\
+        cmake-smoke.ps1\nif ($LASTEXITCODE -ne 0) { throw 'Windows CMake validation failed' }"
+'on':
+  workflow_dispatch:
+    inputs:
+      patch_sha:
+        type: string
+        required: true
+      base_sha:
+        type: string
+        required: true

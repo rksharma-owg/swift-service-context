@@ -1,0 +1,40 @@
+name: Swift 6 language mode
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}-swift_6_language_mode.yml-${{ inputs.name }}
+  cancel-in-progress: false
+jobs:
+  swift-6-language-mode:
+    name: Swift 6 language mode
+    runs-on: ubuntu-latest
+    container:
+      image: swift:6.0-jammy
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      with:
+        persist-credentials: false
+        submodules: true
+        ref: ${{ github.event.inputs.patch_sha }}
+        fetch-depth: 0
+    - name: Verify exact contribution and baseline
+      shell: bash
+      env:
+        PATCH_SHA: ${{ github.event.inputs.patch_sha }}
+        BASE_SHA: ${{ github.event.inputs.base_sha }}
+      run: 'set -euo pipefail
+
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+        test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+
+        git merge-base --is-ancestor "$BASE_SHA" HEAD
+
+        git log -1 --format=fuller'
+    - name: Set the language mode
+      run: swift package tools-version --set 6.0
+    - name: Build with Swift 6 language mode
+      run: swift build -Xswiftc -warnings-as-errors
+'on':
+  workflow_call: null
