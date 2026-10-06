@@ -176,19 +176,26 @@ jobs:
         if ((Get-FileHash cmake.zip -Algorithm SHA256).Hash.ToLower() -ne ''b59a31dfbfa376a4aaea9ff560ff2b29f78ee5f9fb15447fc71ae7bf9fea9379'')
         { throw ''CMake digest mismatch'' }
 
-        Expand-Archive cmake.zip cmake-dist'
+        Expand-Archive cmake.zip cmake-dist
+
+        Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip -OutFile ninja.zip
+
+        if ((Get-FileHash ninja.zip -Algorithm SHA256).Hash.ToLower() -ne ''07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65'')
+        { throw ''Ninja digest mismatch'' }
+
+        Expand-Archive ninja.zip ninja-dist'
     - name: Build-tree and relocated static/shared Windows consumers
       shell: pwsh
       env:
-        SMOKE: "$ErrorActionPreference = 'Stop'\n$env:PATH = 'C:\\work\\cmake-dist\\cmake-4.0.3-windows-x86_64\\bin;' + $env:PATH\n\
-          function Run-CMake { & cmake @args; if ($LASTEXITCODE -ne 0) { throw \"cmake failed: $args\" } }\nfunction Run-CTest\
-          \ { & ctest @args; if ($LASTEXITCODE -ne 0) { throw \"ctest failed: $args\" } }\nSet-Location C:\\work\nswift --version\n\
-          if ($LASTEXITCODE -ne 0) { throw 'Swift unavailable' }\nforeach ($shared in @('OFF', 'ON')) {\n  foreach ($generator\
-          \ in @('Ninja', 'Ninja Multi-Config')) {\n    $label = $shared + '-' + $generator.Replace(' ', '-')\n    $prefix\
-          \ = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -S . -B \"library-$label\" -G $generator -DCMAKE_BUILD_TYPE=Debug\
-          \ \"-DBUILD_SHARED_LIBS=$shared\" \"-DCMAKE_PREFIX_PATH=$prefix\" \"-DCMAKE_INSTALL_PREFIX=$prefix\"\n    Run-CMake\
-          \ --build \"library-$label\" --config Debug\n    Run-CMake --install \"library-$label\" --config Debug\n    Run-CMake\
-          \ -S Tests/CMake -B \"consumer-build-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=C:/work/library-$label;$prefix\"\
+        SMOKE: "$ErrorActionPreference = 'Stop'\n$env:PATH = 'C:\\work\\cmake-dist\\cmake-4.0.3-windows-x86_64\\bin;C:\\work\\\
+          ninja-dist;' + $env:PATH\nfunction Run-CMake { & cmake @args; if ($LASTEXITCODE -ne 0) { throw \"cmake failed: $args\"\
+          \ } }\nfunction Run-CTest { & ctest @args; if ($LASTEXITCODE -ne 0) { throw \"ctest failed: $args\" } }\nSet-Location\
+          \ C:\\work\nswift --version\nif ($LASTEXITCODE -ne 0) { throw 'Swift unavailable' }\nforeach ($shared in @('OFF',\
+          \ 'ON')) {\n  foreach ($generator in @('Ninja', 'Ninja Multi-Config')) {\n    $label = $shared + '-' + $generator.Replace('\
+          \ ', '-')\n    $prefix = 'C:/work/check-' + $label + '/prefix'\n    Run-CMake -S . -B \"library-$label\" -G $generator\
+          \ -DCMAKE_BUILD_TYPE=Debug \"-DBUILD_SHARED_LIBS=$shared\" \"-DCMAKE_PREFIX_PATH=$prefix\" \"-DCMAKE_INSTALL_PREFIX=$prefix\"\
+          \n    Run-CMake --build \"library-$label\" --config Debug\n    Run-CMake --install \"library-$label\" --config Debug\n\
+          \    Run-CMake -S Tests/CMake -B \"consumer-build-$label\" -G $generator \"-DCMAKE_PREFIX_PATH=C:/work/library-$label;$prefix\"\
           \n    Run-CMake --build \"consumer-build-$label\" --config Debug\n    Run-CTest --test-dir \"consumer-build-$label\"\
           \ -C Debug --output-on-failure\n    Move-Item $prefix \"$prefix-moved\"\n    Run-CMake -S Tests/CMake -B \"consumer-install-$label\"\
           \ -G $generator \"-DCMAKE_PREFIX_PATH=$prefix-moved\"\n    Run-CMake --build \"consumer-install-$label\" --config\
